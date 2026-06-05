@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:erd": "DISABLE_ERD=false prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -35,6 +36,7 @@
     "eslint-config-next": "^15.5",
     "postcss": "^8.5",
     "prisma": "^6.19",
+    "prisma-erd-generator": "^2.4.3",
     "tailwindcss": "^3.4",
     "tsx": "^4",
     "typescript": "^5.9",
