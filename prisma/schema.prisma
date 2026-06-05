@@ -1,0 +1,20 @@
+// Step 0: minimal schema (User only) to prove the migrate -> seed -> start chain in the container.
+// The full data model (Psycholog, Ankieta, WynikAnkiety, SesjaUzytkownika, ...) is added in step 1.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  login     String   @unique
+  email     String   @unique
+  hasloHash String
+  createdAt DateTime @default(now())
+}
