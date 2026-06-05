@@ -24,24 +24,12 @@ architektoniczny (`npm run lint`).
 
 ## 2. Model danych — ERD
 
-```mermaid
-erDiagram
-  User ||--o| Psycholog : "profil (opcjonalny)"
-  User ||--o{ WynikAnkiety : "wypełnia"
-  User ||--o{ Wizyta : "rezerwuje"
-  User ||--o{ Powiadomienie : "otrzymuje"
-  User ||--o{ SesjaUzytkownika : "ma sesje"
-  User ||--o{ SecurityEvent : "generuje"
-  Psycholog ||--o| Kalendarz : "ma"
-  Psycholog ||--o{ Wizyta : "prowadzi"
-  Kalendarz ||--o{ Termin : "zawiera"
-  Termin ||--o| Wizyta : "rezerwowany przez"
-  Ankieta ||--o{ Pytanie : "zawiera"
-  Ankieta ||--o{ WynikAnkiety : "ma wyniki"
-  WynikAnkiety ||--o{ Odpowiedz : "składa się z"
-  Pytanie ||--o{ Odpowiedz : "odpowiadane w"
-  Modul ||--o{ ModulZasob : "ma linki"
-```
+Diagram ERD jest **generowany automatycznie** z `prisma/schema.prisma` przez generator
+`prisma-erd-generator` do pliku [`ERD.md`](ERD.md) (Mermaid) — nie jest pisany ręcznie i
+zawsze odzwierciedla aktualny schemat. Regeneracja: `npm run db:erd`. Generator jest
+pomijany w buildzie Dockera (`DISABLE_ERD=true`) i — przy wyjściu `.md` — nie wymaga
+Chromium, więc nie wpływa na `docker compose up --build`. Plik [`ERD.md`](ERD.md) wchodzi
+do oddawanego PDF.
 
 ### Typy wyliczeniowe (enum)
 

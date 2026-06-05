@@ -1,9 +1,15 @@
-// Step 0: minimal schema (User only) to prove the migrate -> seed -> start chain in the container.
-// The full data model (Psycholog, Ankieta, WynikAnkiety, SesjaUzytkownika, ...) is added in step 1.
+// Step 1: full data model. The data layer (src/server/data/**) is the only app code allowed to touch it.
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider      = "prisma-client-js"                       // v6: client to node_modules, import "@prisma/client"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]   // Alpine + OpenSSL 3.0 (Docker)
+}
+
+generator erd {
+  // Auto-generated ERD from this schema -> docs/ERD.md (Mermaid). Regenerate with `npm run db:erd`.
+  // Skipped in the Docker build via DISABLE_ERD=true so `prisma generate` stays clean (no Chromium).
+  provider = "prisma-erd-generator"
+  output   = "../docs/ERD.md"
 }
 
 datasource db {
@@ -11,10 +17,214 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Rola {
+  EMPLOYEE
+  PSYCHOLOGIST
+  ADMIN
+  HR
+}
+
+enum PoziomStresu {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TypModulu {
+  ODDECH
+  MEDYTACJA
+  MUZYKA
+  CWICZENIA
+  KONSULTACJA
+}
+
+enum PasmoCzasu {
+  SHORT_5_10
+  LONG_15_30
+}
+
+enum StatusWizyty {
+  ZAREZERWOWANA
+  ODBYTA
+  ANULOWANA
+}
+
+enum TypPowiadomienia {
+  ANKIETA_PRZYPOMNIENIE
+  KONSULTACJA_POTWIERDZENIE
+  PRZERWA
+  SYSTEM
+}
+
+enum TypZdarzenia {
+  LOGOWANIE_OK
+  LOGOWANIE_BLAD
+  KONTO_ZABLOKOWANE
+  REJESTRACJA
+  RODO_EKSPORT
+  RODO_USUNIECIE
+  DOSTEP_ODMOWA
+}
+
 model User {
-  id        String   @id @default(cuid())
-  login     String   @unique
-  email     String   @unique
-  hasloHash String
-  createdAt DateTime @default(now())
+  id               String    @id @default(cuid())
+  imie             String
+  nazwisko         String
+  login            String    @unique          // RB-01/03; "Nazwa" z makiety logowania
+  email            String    @unique          // RB-02; kontakt / RODO
+  hasloHash        String
+  rola             Rola      @default(EMPLOYEE)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  psycholog        Psycholog?
+  wyniki           WynikAnkiety[]
+  wizyty           Wizyta[]
+  powiadomienia    Powiadomienie[]
+  sesje            SesjaUzytkownika[]
+  zdarzenia        SecurityEvent[]
+}
+
+model Psycholog {
+  id              String     @id @default(cuid())
+  imie            String
+  nazwisko        String
+  telefon         String
+  linkDoSpotkania String
+  specjalizacja   String
+  userId          String?    @unique
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kalendarz       Kalendarz?
+  wizyty          Wizyta[]
+  createdAt       DateTime   @default(now())
+}
+
+model Kalendarz {
+  id          String    @id @default(cuid())
+  psychologId String    @unique
+  psycholog   Psycholog @relation(fields: [psychologId], references: [id], onDelete: Cascade)
+  terminy     Termin[]
+}
+
+model Termin {
+  id          String    @id @default(cuid())
+  kalendarzId String
+  kalendarz   Kalendarz @relation(fields: [kalendarzId], references: [id], onDelete: Cascade)
+  poczatek    DateTime
+  koniec      DateTime
+  zajety      Boolean   @default(false)
+  wizyta      Wizyta?
+  @@index([kalendarzId, poczatek])
+}
+
+model Wizyta {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  psychologId     String
+  psycholog       Psycholog    @relation(fields: [psychologId], references: [id])
+  terminId        String       @unique
+  termin          Termin       @relation(fields: [terminId], references: [id])
+  status          StatusWizyty @default(ZAREZERWOWANA)
+  linkDoSpotkania String
+  createdAt       DateTime     @default(now())
+}
+
+model Ankieta {
+  id        String         @id @default(cuid())
+  tytul     String
+  wersja    Int            @default(1)
+  aktywna   Boolean        @default(true)
+  pytania   Pytanie[]
+  wyniki    WynikAnkiety[]
+  createdAt DateTime       @default(now())
+}
+
+model Pytanie {
+  id         String      @id @default(cuid())
+  ankietaId  String
+  ankieta    Ankieta     @relation(fields: [ankietaId], references: [id], onDelete: Cascade)
+  tresc      String
+  kolejnosc  Int
+  odpowiedzi Odpowiedz[]
+  @@unique([ankietaId, kolejnosc])
+}
+
+model WynikAnkiety {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ankietaId       String
+  ankieta         Ankieta      @relation(fields: [ankietaId], references: [id])
+  sumaPunktow     Int
+  poziomStresu    PoziomStresu
+  dataWypelnienia DateTime     @default(now())
+  odpowiedzi      Odpowiedz[]
+  @@index([userId, dataWypelnienia])
+}
+
+model Odpowiedz {
+  id             String       @id @default(cuid())
+  wynikAnkietyId String
+  wynik          WynikAnkiety @relation(fields: [wynikAnkietyId], references: [id], onDelete: Cascade)
+  pytanieId      String
+  pytanie        Pytanie      @relation(fields: [pytanieId], references: [id])
+  wartosc        Int          // 1..5 (walidacja w warstwie domeny)
+  @@unique([wynikAnkietyId, pytanieId])
+}
+
+model Modul {
+  id     String       @id @default(cuid())
+  typ    TypModulu    @unique
+  tytul  String
+  opis   String
+  zasoby ModulZasob[]
+}
+
+model ModulZasob {
+  id       String     @id @default(cuid())
+  modulId  String
+  modul    Modul      @relation(fields: [modulId], references: [id], onDelete: Cascade)
+  etykieta String
+  url      String
+  pasmo    PasmoCzasu
+}
+
+model Powiadomienie {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  typ         TypPowiadomienia
+  tresc       String
+  przeczytane Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  @@index([userId, przeczytane])
+}
+
+model SesjaUzytkownika {                       // RB-05: encja sesji uwierzytelnienia (diagram klas)
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token             String   @unique           // token sesji PRZECHOWYWANY ZAHASHOWANY (SHA-256); cookie nosi wartość surową
+  poczatek          DateTime @default(now())    // = dataRozpoczecia (diagram)
+  koniec            DateTime?                    // = dataZakonczenia; ustawiany przy wylogowaniu (zakonczSesje(), RB-05)
+  wygasa            DateTime                     // expiresAt — moment wygaśnięcia sesji
+  ostatniaAktywnosc DateTime @default(now())
+  ostatniaPrzerwa   DateTime?                    // RB-22 — timer przerwy korzysta z tej samej encji
+  ip                String?
+  @@index([userId])
+}
+
+model SecurityEvent {
+  id        String       @id @default(cuid())
+  userId    String?
+  user      User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  typ       TypZdarzenia
+  opis      String       // nigdy hasło ani pełne odpowiedzi ankiety
+  login     String?      // próbowany login, gdy user nieznany
+  ip        String?
+  createdAt DateTime     @default(now())
+  @@index([typ, createdAt])
 }

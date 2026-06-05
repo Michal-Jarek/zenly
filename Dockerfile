@@ -2,6 +2,10 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
+# ERD generator stays out of the image build: skip the Chromium download and skip ERD
+# generation, so the `prisma generate` below is clean and never threatens `docker compose up`.
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    DISABLE_ERD=true
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
