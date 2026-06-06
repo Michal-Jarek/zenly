@@ -24,3 +24,7 @@ next-env.d.ts
 
 # testing
 /coverage
+
+# database backups (dumps are not committed; keep the directory)
+/backups/*
+!/backups/.gitkeep

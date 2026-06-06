@@ -13,7 +13,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "db:erd": "DISABLE_ERD=false prisma generate"
+    "db:erd": "DISABLE_ERD=false prisma generate",
+    "db:backup": "sh scripts/db-backup.sh",
+    "db:restore": "sh scripts/db-restore.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

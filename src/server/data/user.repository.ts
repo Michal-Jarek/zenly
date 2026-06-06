@@ -111,3 +111,62 @@ export function updateLoginState(
     select: { id: true },
   });
 }
+
+/** A user's login by id (used by the GDPR delete path to log the event after the row is gone). */
+export function findUserLoginById(id: string): Promise<{ login: string } | null> {
+  return prisma.user.findUnique({ where: { id }, select: { login: true } });
+}
+
+/** Editable/exportable profile fields (RODO). Explicit safe select — never the password hash. */
+export function findUserExportProfile(id: string): Promise<{
+  imie: string;
+  nazwisko: string;
+  login: string;
+  email: string;
+  rola: $Enums.Rola;
+  createdAt: Date;
+  updatedAt: Date;
+} | null> {
+  return prisma.user.findUnique({
+    where: { id },
+    select: {
+      imie: true,
+      nazwisko: true,
+      login: true,
+      email: true,
+      rola: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+}
+
+/**
+ * Update a user's editable profile (RODO rectification). The `email @unique` constraint is the real
+ * guarantee: a concurrent duplicate (P2002) is translated to {@link CredentialsTakenError} so the
+ * service never has to know Prisma error codes.
+ *
+ * @throws {CredentialsTakenError} When the new email is already taken.
+ */
+export async function updateUserProfile(
+  id: string,
+  data: { imie: string; nazwisko: string; email: string },
+): Promise<{ imie: string; nazwisko: string; email: string; rola: $Enums.Rola }> {
+  try {
+    return await prisma.user.update({
+      where: { id },
+      data,
+      select: { imie: true, nazwisko: true, email: true, rola: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new CredentialsTakenError();
+    }
+    throw err;
+  }
+}
+
+/** Permanently delete a user; schema cascades remove their results/visits/notifications/sessions. */
+export function deleteUser(id: string): Promise<{ id: string }> {
+  return prisma.user.delete({ where: { id }, select: { id: true } });
+}

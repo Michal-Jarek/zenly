@@ -123,12 +123,53 @@ Index `(userId)`.
 | Atrybuty cookie | httpOnly + sameSite=lax + secure (prod) + maxAge | `lib/session-cookie.ts` | planowane (krok 4) |
 | Ochrona CSRF | sameSite=lax + sprawdzenie Origin/Host w Server Actions | `lib/csrf.ts` | planowane (krok 3/4) |
 | Kontrola dostępu (RBAC) | `requireUser(roles)` + `middleware.ts` (presence cookie, edge-safe) | `authService`, `middleware.ts` | planowane (krok 4/6) |
-| Pracownik widzi tylko swoje wyniki (RB-29) | `assertOwnsResult` | `domain/access.ts` | planowane (krok 2/6) |
-| HR tylko dane zagregowane (RB-30) | `anonymizeStressReport` (agregat bez PII) | `domain/anonymize.ts` | planowane (krok 2/6) |
-| RODO — eksport i usunięcie danych | eksport JSON + usunięcie konta (kaskady) + log | `gdpr.service` | planowane (krok 6) |
-| Rejestr zdarzeń bezpieczeństwa | logger bez haseł i pełnych odpowiedzi (typ/suma/poziom) | `security.service`, `SecurityEvent` | planowane (krok 6) |
-| Awaria systemu + telefon pilnej pomocy + log błędów (RB-25/26/27) | error boundary z numerem pomocy | `app/**` (error boundary) | planowane (krok 5) |
-| Kopia zapasowa i odtwarzanie | skrypty `db:backup` (pg_dump) / `db:restore` (pg_restore) | `package.json` / skrypty | planowane (krok 7) |
+| Kontrola dostępu paneli (RBAC) | `requirePanelRole` — panele Admin/HR/psycholog + log `DOSTEP_ODMOWA` na odmowie | `authService`, `security.service` | zrealizowane (krok 6) |
+| Pracownik widzi tylko swoje wyniki (RB-29) | `assertOwnsResult` | `domain/access.ts` | zrealizowane (krok 2/6) |
+| HR tylko dane zagregowane (RB-30) | `anonymizeStressReport` (agregat bez PII) | `domain/anonymize.ts` | zrealizowane (krok 2/6) |
+| RODO — wgląd (eksport) | „Eksportuj moje dane" → JSON (profil + ankiety + konsultacje + powiadomienia), bez `hasloHash`/sesji + log | `gdpr.service`, `gdpr.actions` | zrealizowane (krok 6) |
+| RODO — poprawienie (rektyfikacja) | edycja profilu (imię/nazwisko/email) + normalizacja e-maila + kontrola unikalności | `user.service.updateMyProfile`, `gdpr.actions` | zrealizowane (krok 6) |
+| RODO — usunięcie danych | „Usuń konto" → usunięcie konta (kaskady, audyt zostaje) + log `RODO_USUNIECIE` | `gdpr.service`, `gdpr.actions` | zrealizowane (krok 6) |
+| Rejestr zdarzeń bezpieczeństwa | logger bez haseł i pełnych odpowiedzi (typ/login/ip/opis); zdarzenia auth + `DOSTEP_ODMOWA`/`RODO_*` | `authService`, `security.service`, `SecurityEvent` | zrealizowane (krok 4/6) |
+| Awaria systemu + telefon pilnej pomocy + log błędów (RB-25/26/27) | error boundary z numerem pomocy | `app/**` (error boundary) | zrealizowane (krok 5) |
+| Kopia zapasowa i odtwarzanie | skrypty `db:backup` (`pg_dump -Fc`) / `db:restore` (`pg_restore`) przez kontener `db` | `package.json`, `scripts/` | zrealizowane (krok 7) |
 
 ### Poza zakresem (tylko opis)
 TLS/HTTPS, testy penetracyjne, zawężanie psychologa do konkretnej konsultacji, pełne zarządzanie kontami administratora.
+
+## 5. Kopia zapasowa i odtwarzanie bazy
+
+Ręczne narzędzia operacyjne — świadomie **niewpięte** w build ani `entrypoint.sh`, więc nie wpływają
+na `docker compose up --build`. Wymagają działającego kontenera `db` (Compose).
+
+| Komenda | Działanie |
+|---|---|
+| `npm run db:backup` | `pg_dump -Fc` z kontenera `db` → `backups/zenly_<timestamp>.dump` |
+| `npm run db:restore -- <plik>` | `pg_restore --clean --if-exists --single-transaction` z pliku do kontenera `db` |
+
+- **Format**: custom (`-Fc`) — kompaktowy, odtwarzany przez `pg_restore`. Oba narzędzia uruchamiane
+  **w kontenerze** (`docker compose exec -T db ...`), więc ich wersja zgadza się z Postgres 17; `-T`
+  chroni binarny strumień przed zniekształceniem.
+- **Dane dostępowe**: z env kontenera (`POSTGRES_USER`/`POSTGRES_DB`) — bez powielania w skrypcie.
+- **Pliki**: katalog `backups/` (poza repo — `.gitignore`; w repo zostaje tylko `.gitkeep`).
+- **Odtwarzanie nadpisuje** bieżące dane snapshotem z dumpu (`--clean` usuwa i odtwarza obiekty);
+  `--single-transaction` czyni operację atomową (wszystko-albo-nic). Na czas restore aplikacja
+  powinna być bezczynna (uniknięcie kontencji blokad).
+- **Migracje**: dump zawiera tabelę `_prisma_migrations`, więc po odtworzeniu starszego dumpu stan
+  migracji odpowiada dumpowi; przy kolejnym `docker compose up` `prisma migrate deploy` dołoży nowsze
+  migracje. Seed nie jest uruchamiany przy restore (tylko przy starcie kontenera).
+
+## 6. RODO — prawa osoby, której dane dotyczą
+
+Wymóg („wgląd do własnych danych oraz zgłoszenie prośby o ich poprawienie lub usunięcie") jest
+zrealizowany jako self-service na ekranie *Ustawienia → Twoje dane (RODO)*:
+
+| Prawo | Realizacja | Zdarzenie audytu |
+|---|---|---|
+| Wgląd | „Eksportuj moje dane" → profil + ankiety + konsultacje + powiadomienia jako JSON | `RODO_EKSPORT` |
+| Poprawienie (rektyfikacja) | edycja profilu (imię/nazwisko/email) z normalizacją e-maila i kontrolą unikalności | — (świadomie bez `SecurityEvent`) |
+| Usunięcie | „Usuń konto" (modal potwierdzenia) → usunięcie z kaskadami; audyt zostaje (`userId`→null) | `RODO_USUNIECIE` |
+
+Eksport nigdy nie zawiera `hasloHash` ani tokenów sesji. Rektyfikacja — w odróżnieniu od eksportu i
+usunięcia — **nie** jest rejestrowana jako `SecurityEvent`: w enumie `TypZdarzenia` nie ma wartości
+dla aktualizacji profilu, a jej dodanie wymagałoby migracji schematu (świadomy trade-off poza
+lean-zakresem Kroków 6–7).

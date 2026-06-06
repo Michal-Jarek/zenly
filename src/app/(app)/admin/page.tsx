@@ -1,13 +1,11 @@
-import { redirect } from "next/navigation";
-import { requireUser } from "@/server/services/auth.service";
+import { requirePanelRole } from "@/server/services/auth.service";
 import { getStatus } from "@/server/services/health.service";
 import { Card } from "@/components/Card";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const session = await requireUser();
-  if (session.rola !== "ADMIN") redirect("/dashboard");
+  await requirePanelRole(["ADMIN"]);
 
   const status = await getStatus();
 
