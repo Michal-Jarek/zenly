@@ -5,8 +5,8 @@ trójwarstwowa, uruchamiana lokalnie jedną komendą (`docker compose up --build
 Next.js + PostgreSQL + Docker Compose.
 
 > Ten dokument jest deliverable'em (materiał do oddawanego PDF). Zawiera: architekturę
-> warstw, model danych (ERD), schemat bazy oraz tabelę zakresu realizacji wymagań
-> bezpieczeństwa. Uzupełniany w kolejnych krokach implementacji.
+> warstw, model danych (ERD), schemat bazy, tabelę realizacji wymagań bezpieczeństwa,
+> decyzje i ograniczenia zakresu, kopię zapasową/odtwarzanie oraz realizację praw RODO.
 
 ## 1. Architektura trójwarstwowa
 
@@ -87,6 +87,10 @@ Index `(kalendarzId, poczatek)`. Relacja: 0..1 `Wizyta`.
 - `Modul`: `typ` (TypModulu, UNIQUE), `tytul`, `opis`.
 - `ModulZasob`: `modulId` (Cascade), `etykieta`, `url`, `pasmo` (PasmoCzasu).
 
+### Powiadomienie
+`userId` (`onDelete: Cascade`), `typ` (TypPowiadomienia), `tresc`, `przeczytane` (Boolean, default false),
+`createdAt`. Index `(userId, przeczytane)`.
+
 ### SesjaUzytkownika (encja sesji uwierzytelnienia, RB-05)
 | Pole | Typ | Uwagi |
 |---|---|---|
@@ -114,15 +118,20 @@ Index `(userId)`.
 
 ## 4. Tabela zakresu realizacji wymagań bezpieczeństwa
 
+Status każdej pozycji: **zrealizowane** (wdrożone w kodzie), **częściowo** (wdrożone w zakresie
+demo, z opisanym ograniczeniem) lub **poza zakresem** (świadoma decyzja zakresu pracy — patrz
+sekcja „Decyzje i ograniczenia zakresu"). Tabela jest kompletna: ujmuje także pozycje świadomie
+niezrealizowane, wraz z uzasadnieniem.
+
 | Wymaganie | Realizacja | Warstwa / miejsce | Status |
 |---|---|---|---|
-| Hasła wyłącznie zahashowane (RB-04) | bcryptjs (hash/compare) | `authService` | planowane (krok 4) |
-| Silna polityka hasła | `validatePasswordStrength` (≥12 zn., mała/wielka/cyfra/specjalny) | `domain/password.ts` | planowane (krok 2) |
-| Blokada konta po 5 nieudanych próbach | `shouldLockAccount` → `failedLoginCount`/`lockedUntil` + log | `domain/account-lock.ts`, `authService` | planowane (krok 2/4) |
-| Bezpieczna sesja | własna sesja: surowy token w cookie, SHA-256 w DB; `koniec` zamyka sesję | `SesjaUzytkownika`, `authService`, `lib/session-cookie.ts` | planowane (krok 4) |
-| Atrybuty cookie | httpOnly + sameSite=lax + secure (prod) + maxAge | `lib/session-cookie.ts` | planowane (krok 4) |
-| Ochrona CSRF | sameSite=lax + sprawdzenie Origin/Host w Server Actions | `lib/csrf.ts` | planowane (krok 3/4) |
-| Kontrola dostępu (RBAC) | `requireUser(roles)` + `middleware.ts` (presence cookie, edge-safe) | `authService`, `middleware.ts` | planowane (krok 4/6) |
+| Hasła wyłącznie zahashowane (RB-04) | bcryptjs (hash/compare) | `authService` | zrealizowane (krok 4) |
+| Silna polityka hasła | `validatePasswordStrength` (≥12 zn., mała/wielka/cyfra/specjalny) | `domain/password.ts` | zrealizowane (krok 2) |
+| Blokada konta po 5 nieudanych próbach | `shouldLockAccount` → `failedLoginCount`/`lockedUntil` + log | `domain/account-lock.ts`, `authService` | zrealizowane (krok 2/4) |
+| Bezpieczna sesja | własna sesja: surowy token w cookie, SHA-256 w DB; `koniec` zamyka sesję | `SesjaUzytkownika`, `authService`, `lib/session-cookie.ts` | zrealizowane (krok 4) |
+| Atrybuty cookie | httpOnly + sameSite=lax + secure (prod) + maxAge | `lib/session-cookie.ts` | zrealizowane (krok 4) |
+| Ochrona CSRF | sameSite=lax + sprawdzenie Origin/Host w Server Actions | `lib/csrf.ts` | zrealizowane (krok 3/4) |
+| Kontrola dostępu (RBAC) | `requireUser(roles)` + `middleware.ts` (presence cookie, edge-safe) | `authService`, `middleware.ts` | zrealizowane (krok 4/6) |
 | Kontrola dostępu paneli (RBAC) | `requirePanelRole` — panele Admin/HR/psycholog + log `DOSTEP_ODMOWA` na odmowie | `authService`, `security.service` | zrealizowane (krok 6) |
 | Pracownik widzi tylko swoje wyniki (RB-29) | `assertOwnsResult` | `domain/access.ts` | zrealizowane (krok 2/6) |
 | HR tylko dane zagregowane (RB-30) | `anonymizeStressReport` (agregat bez PII) | `domain/anonymize.ts` | zrealizowane (krok 2/6) |
@@ -132,11 +141,37 @@ Index `(userId)`.
 | Rejestr zdarzeń bezpieczeństwa | logger bez haseł i pełnych odpowiedzi (typ/login/ip/opis); zdarzenia auth + `DOSTEP_ODMOWA`/`RODO_*` | `authService`, `security.service`, `SecurityEvent` | zrealizowane (krok 4/6) |
 | Awaria systemu + telefon pilnej pomocy + log błędów (RB-25/26/27) | error boundary z numerem pomocy | `app/**` (error boundary) | zrealizowane (krok 5) |
 | Kopia zapasowa i odtwarzanie | skrypty `db:backup` (`pg_dump -Fc`) / `db:restore` (`pg_restore`) przez kontener `db` | `package.json`, `scripts/` | zrealizowane (krok 7) |
+| Szyfrowanie transportu (TLS/HTTPS) | lokalne demo bez hostingu; flaga `secure` cookie gotowa pod HTTPS (sterowana osobnym przełącznikiem, nie `NODE_ENV`) | `lib/session-cookie.ts` | poza zakresem (demo lokalne) |
+| Testy penetracyjne | — | — | poza zakresem (poza tematem pracy) |
+| Logowanie błędów aplikacji | rejestrowane zdarzenia bezpieczeństwa: błędne/poprawne logowania, blokady, odmowy dostępu, zdarzenia RODO; ogólne błędy aplikacji nie trafiają do `SecurityEvent` | `security.service`, `authService`, `SecurityEvent` | częściowo (zakres zdarzeń bezpieczeństwa) |
+| Zawężanie psychologa do konkretnej konsultacji | panele oparte na roli (RBAC); brak reguły „psycholog widzi tylko własne wizyty" | `authService`, panele `app/**` | poza zakresem (minimalne panele) |
+| Pełne zarządzanie kontami administratora | rola `ADMIN` + RBAC paneli; brak pełnego CRUD-a użytkowników w UI | `authService`, panel admin | częściowo (minimalny panel admin) |
 
-### Poza zakresem (tylko opis)
-TLS/HTTPS, testy penetracyjne, zawężanie psychologa do konkretnej konsultacji, pełne zarządzanie kontami administratora.
+## 5. Decyzje i ograniczenia zakresu
 
-## 5. Kopia zapasowa i odtwarzanie bazy
+Poniższe pozycje są **świadomymi decyzjami zakresu** pracy (aplikacja demonstracyjna uruchamiana
+lokalnie), a nie brakami implementacyjnymi. Każdą opisano wraz z uzasadnieniem i — gdzie to istotne —
+przygotowaniem pod ewentualne wdrożenie produkcyjne.
+
+- **TLS/HTTPS** — demo działa lokalnie przez `docker compose up --build` bez hostingu, więc transport
+  nie jest szyfrowany. Aplikacja jest jednak **gotowa pod HTTPS**: atrybut `secure` cookie sesji jest
+  sterowany osobnym przełącznikiem (świadomie **nie** przez `NODE_ENV`), więc włączenie go za
+  reverse-proxy z TLS nie wymaga zmian w logice.
+- **Testy penetracyjne** — poza tematem pracy magisterskiej (skupionej na architekturze 3-warstwowej,
+  konteneryzacji, testach jednostkowych i dokumentacji). Zaadresowano natomiast konkretne klasy ryzyk
+  na poziomie kodu (hashowanie haseł, blokada konta, anty-enumeracja, CSRF, RBAC, rejestr zdarzeń).
+- **Zarządzanie kontami administratora i zawężanie psychologa do konkretnej konsultacji** — panele
+  Admin/HR/psycholog są **minimalne**: egzekwują dostęp na poziomie roli (RBAC, `requirePanelRole`),
+  ale nie obejmują pełnego CRUD-a użytkowników w UI ani reguły „psycholog widzi wyłącznie własne
+  wizyty". To celowe ograniczenie zakresu demo; granice warstw i model danych pozwalają taką regułę
+  dołożyć bez zmian architektonicznych.
+- **Logowanie błędów aplikacji vs `SecurityEvent`** — rejestr `SecurityEvent` celowo obejmuje
+  **zdarzenia bezpieczeństwa** (poprawne/błędne logowania, blokady konta, odmowy dostępu
+  `DOSTEP_ODMOWA`, operacje RODO), a nie wszystkie ogólne błędy aplikacji. Awarie warstwy prezentacji
+  obsługuje error boundary z numerem pilnej pomocy (RB-25/26/27). Rozdział „audyt bezpieczeństwa"
+  od „telemetria błędów" jest świadomy — `SecurityEvent` pozostaje czytelnym śladem audytowym.
+
+## 6. Kopia zapasowa i odtwarzanie bazy
 
 Ręczne narzędzia operacyjne — świadomie **niewpięte** w build ani `entrypoint.sh`, więc nie wpływają
 na `docker compose up --build`. Wymagają działającego kontenera `db` (Compose).
@@ -158,7 +193,7 @@ na `docker compose up --build`. Wymagają działającego kontenera `db` (Compose
   migracji odpowiada dumpowi; przy kolejnym `docker compose up` `prisma migrate deploy` dołoży nowsze
   migracje. Seed nie jest uruchamiany przy restore (tylko przy starcie kontenera).
 
-## 6. RODO — prawa osoby, której dane dotyczą
+## 7. RODO — prawa osoby, której dane dotyczą
 
 Wymóg („wgląd do własnych danych oraz zgłoszenie prośby o ich poprawienie lub usunięcie") jest
 zrealizowany jako self-service na ekranie *Ustawienia → Twoje dane (RODO)*:
