@@ -15,3 +15,13 @@ export function findUserById(
     select: { id: true, rola: true },
   });
 }
+
+/** Resolve a user id by their unique login (used by the temporary current-user seam). */
+export function findUserByLogin(
+  login: string,
+): Promise<{ id: string } | null> {
+  return prisma.user.findUnique({
+    where: { login },
+    select: { id: true },
+  });
+}

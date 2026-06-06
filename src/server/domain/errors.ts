@@ -42,3 +42,11 @@ export class SurveyNotActiveError extends Error {
     this.name = "SurveyNotActiveError";
   }
 }
+
+/** Thrown when a mutating request fails the same-origin (CSRF) check at the transport layer. */
+export class CsrfError extends Error {
+  constructor(message = "Cross-origin request rejected") {
+    super(message);
+    this.name = "CsrfError";
+  }
+}
