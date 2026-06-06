@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* a11y: a visible focus ring for keyboard users on interactive elements. */
+@layer base {
+  :focus-visible {
+    @apply outline-none ring-2 ring-neutral-900 ring-offset-2 ring-offset-neutral-100;
+  }
+}

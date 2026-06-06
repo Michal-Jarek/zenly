@@ -6,12 +6,15 @@ import { SESSION_COOKIE_NAME } from "@/lib/session-cookie-name";
 // Full session validity (hash lookup, expiry, lock) runs in Node via authService.getSession.
 export function middleware(req: NextRequest): NextResponse {
   const hasSession = req.cookies.has(SESSION_COOKIE_NAME);
-  if (hasSession) {
-    return NextResponse.next();
+  if (!hasSession) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("from", req.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
   }
-  const loginUrl = new URL("/login", req.url);
-  loginUrl.searchParams.set("from", req.nextUrl.pathname);
-  return NextResponse.redirect(loginUrl);
+  // Expose the path so the (app) layout can apply the RB-06 first-survey gate (layouts have no pathname).
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", req.nextUrl.pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 // Protected (app) routes only — real paths (route groups have no URL segment). Public routes
@@ -27,5 +30,8 @@ export const config = {
     "/cwiczenia/:path*",
     "/konsultacja/:path*",
     "/ustawienia/:path*",
+    "/admin/:path*",
+    "/hr/:path*",
+    "/psycholog/:path*",
   ],
 };

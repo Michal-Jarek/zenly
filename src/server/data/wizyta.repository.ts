@@ -10,6 +10,15 @@ import { NotFoundError, SlotAlreadyTakenError } from "@/server/domain/errors";
  * @throws {SlotAlreadyTakenError} When the slot was already taken.
  * @throws {NotFoundError} When the slot (or its psychologist) does not exist.
  */
+/** A user's upcoming reserved consultations (slot in the future), earliest first, with slot + psychologist. */
+export function listUpcomingByUser(userId: string, now: Date) {
+  return prisma.wizyta.findMany({
+    where: { userId, status: "ZAREZERWOWANA", termin: { poczatek: { gte: now } } },
+    include: { termin: true, psycholog: true },
+    orderBy: { termin: { poczatek: "asc" } },
+  });
+}
+
 export function bookConsultation(input: {
   userId: string;
   terminId: string;
