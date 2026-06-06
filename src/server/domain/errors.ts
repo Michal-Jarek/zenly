@@ -50,3 +50,35 @@ export class CsrfError extends Error {
     this.name = "CsrfError";
   }
 }
+
+/** Thrown when an action requires a logged-in user but no valid session exists (RB-04). */
+export class AuthRequiredError extends Error {
+  constructor(message = "Authentication required") {
+    super(message);
+    this.name = "AuthRequiredError";
+  }
+}
+
+/** Thrown on registration when the login or email is already taken (RB-02). */
+export class CredentialsTakenError extends Error {
+  constructor(message = "Login or email already taken") {
+    super(message);
+    this.name = "CredentialsTakenError";
+  }
+}
+
+/** Thrown on login for an unknown login OR a wrong password — generic, never reveals which (anti-enumeration). */
+export class InvalidCredentialsError extends Error {
+  constructor(message = "Invalid credentials") {
+    super(message);
+    this.name = "InvalidCredentialsError";
+  }
+}
+
+/** Thrown on login when the account is temporarily locked after too many failed attempts (RB-04). */
+export class AccountLockedError extends Error {
+  constructor(message = "Account temporarily locked") {
+    super(message);
+    this.name = "AccountLockedError";
+  }
+}

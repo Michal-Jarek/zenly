@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { redirect } from "next/navigation";
 import { ok, fail, toActionError, runAction } from "@/lib/action-result";
 import {
   ValidationError,
@@ -8,6 +9,10 @@ import {
   NotFoundError,
   SlotAlreadyTakenError,
   CsrfError,
+  AuthRequiredError,
+  CredentialsTakenError,
+  InvalidCredentialsError,
+  AccountLockedError,
 } from "@/server/domain/errors";
 
 describe("ok / fail", () => {
@@ -27,6 +32,13 @@ describe("toActionError — domain error mapping", () => {
     expect(toActionError(new NotFoundError()).code).toBe("NOT_FOUND");
     expect(toActionError(new SlotAlreadyTakenError()).code).toBe("SLOT_TAKEN");
     expect(toActionError(new CsrfError()).code).toBe("CSRF");
+  });
+
+  it("maps the auth errors to their stable codes", () => {
+    expect(toActionError(new AuthRequiredError()).code).toBe("UNAUTHENTICATED");
+    expect(toActionError(new CredentialsTakenError()).code).toBe("CONFLICT");
+    expect(toActionError(new InvalidCredentialsError()).code).toBe("AUTH_INVALID");
+    expect(toActionError(new AccountLockedError()).code).toBe("AUTH_LOCKED");
   });
 
   it("maps a domain ValidationError to a safe VALIDATION message without leaking raw detail", () => {
@@ -69,5 +81,15 @@ describe("runAction", () => {
       ok: false,
       error: { code: "SLOT_TAKEN", message: "Termin został już zajęty." },
     });
+  });
+
+  // Easiest-to-silently-regress property: redirect() inside an action must propagate as Next's
+  // NEXT_REDIRECT control flow, NOT get caught and mapped to INTERNAL (which would kill navigation).
+  it("does not swallow redirect() — NEXT_REDIRECT propagates", async () => {
+    await expect(
+      runAction(async () => {
+        redirect("/login");
+      }),
+    ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
   });
 });

@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { unstable_rethrow } from "next/navigation";
 import {
   ValidationError,
   SurveyNotActiveError,
@@ -6,6 +7,10 @@ import {
   NotFoundError,
   SlotAlreadyTakenError,
   CsrfError,
+  AuthRequiredError,
+  CredentialsTakenError,
+  InvalidCredentialsError,
+  AccountLockedError,
 } from "@/server/domain/errors";
 
 /** Stable, client-safe error codes a Server Action can return (the UI switches on these). */
@@ -17,6 +22,10 @@ export type ActionErrorCode =
   | "NOT_FOUND"
   | "SLOT_TAKEN"
   | "CSRF"
+  | "UNAUTHENTICATED"
+  | "CONFLICT"
+  | "AUTH_INVALID"
+  | "AUTH_LOCKED"
   | "INTERNAL";
 
 /** A safe error payload: a stable code, a user-facing message, and optional per-field messages. */
@@ -92,6 +101,22 @@ export function toActionError(err: unknown): ActionError {
   if (err instanceof CsrfError) {
     return { code: "CSRF", message: "Nieprawidłowe źródło żądania." };
   }
+  if (err instanceof AuthRequiredError) {
+    return { code: "UNAUTHENTICATED", message: "Wymagane logowanie." };
+  }
+  if (err instanceof CredentialsTakenError) {
+    return { code: "CONFLICT", message: "Login lub e-mail jest już zajęty." };
+  }
+  if (err instanceof InvalidCredentialsError) {
+    // Generic on purpose: same message for unknown login and wrong password (anti-enumeration).
+    return { code: "AUTH_INVALID", message: "Nieprawidłowy login lub hasło." };
+  }
+  if (err instanceof AccountLockedError) {
+    return {
+      code: "AUTH_LOCKED",
+      message: "Konto jest tymczasowo zablokowane. Spróbuj ponownie później.",
+    };
+  }
   return { code: "INTERNAL", message: "Wystąpił błąd. Spróbuj ponownie." };
 }
 
@@ -106,6 +131,9 @@ export async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T
   try {
     return ok(await fn());
   } catch (err) {
+    // Next control-flow signals (redirect/notFound) throw too — let them propagate, or `redirect()`
+    // inside an action would be swallowed into INTERNAL and navigation would silently never happen.
+    unstable_rethrow(err);
     return fail(toActionError(err));
   }
 }
