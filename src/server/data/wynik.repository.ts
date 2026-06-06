@@ -48,3 +48,24 @@ export function getLatestResultByUser(
     select: { dataWypelnienia: true },
   });
 }
+
+/** A user's survey results with their answers, for the RODO export (explicit safe select). */
+export function getResultsForExport(userId: string): Promise<
+  {
+    sumaPunktow: number;
+    poziomStresu: $Enums.PoziomStresu;
+    dataWypelnienia: Date;
+    odpowiedzi: { pytanieId: string; wartosc: number }[];
+  }[]
+> {
+  return prisma.wynikAnkiety.findMany({
+    where: { userId },
+    orderBy: { dataWypelnienia: "desc" },
+    select: {
+      sumaPunktow: true,
+      poziomStresu: true,
+      dataWypelnienia: true,
+      odpowiedzi: { select: { pytanieId: true, wartosc: true } },
+    },
+  });
+}

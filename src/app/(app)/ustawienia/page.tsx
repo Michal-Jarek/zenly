@@ -1,13 +1,17 @@
 import { requireUser } from "@/server/services/auth.service";
-import { getMyProfile } from "@/server/services/user.service";
+import { getMyProfile, getMyEditableProfile } from "@/server/services/user.service";
 import { Card } from "@/components/Card";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { RodoActions } from "@/components/settings/RodoActions";
 
 export const dynamic = "force-dynamic";
 
 export default async function UstawieniaPage() {
   const { userId } = await requireUser();
-  const profile = await getMyProfile(userId);
+  const [profile, editableProfile] = await Promise.all([
+    getMyProfile(userId),
+    getMyEditableProfile(userId),
+  ]);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -26,8 +30,9 @@ export default async function UstawieniaPage() {
       <Card>
         <h2 className="text-lg font-semibold">Twoje dane (RODO)</h2>
         <p className="mt-2 text-sm text-neutral-500">
-          Eksport oraz usunięcie danych będą dostępne wkrótce.
+          Masz prawo wglądu do swoich danych, ich poprawienia oraz usunięcia.
         </p>
+        <RodoActions initialProfile={editableProfile} />
       </Card>
     </div>
   );

@@ -1,5 +1,5 @@
 import { prisma } from "@/server/data/db";
-import type { Wizyta } from "@prisma/client";
+import type { $Enums, Wizyta } from "@prisma/client";
 import { NotFoundError, SlotAlreadyTakenError } from "@/server/domain/errors";
 
 /**
@@ -16,6 +16,29 @@ export function listUpcomingByUser(userId: string, now: Date) {
     where: { userId, status: "ZAREZERWOWANA", termin: { poczatek: { gte: now } } },
     include: { termin: true, psycholog: true },
     orderBy: { termin: { poczatek: "asc" } },
+  });
+}
+
+/** All of a user's consultations for the RODO export (explicit safe select; their own booking data). */
+export function getVisitsForExport(userId: string): Promise<
+  {
+    status: $Enums.StatusWizyty;
+    linkDoSpotkania: string;
+    createdAt: Date;
+    termin: { poczatek: Date; koniec: Date };
+    psycholog: { imie: string; nazwisko: string; specjalizacja: string };
+  }[]
+> {
+  return prisma.wizyta.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      status: true,
+      linkDoSpotkania: true,
+      createdAt: true,
+      termin: { select: { poczatek: true, koniec: true } },
+      psycholog: { select: { imie: true, nazwisko: true, specjalizacja: true } },
+    },
   });
 }
 

@@ -24,6 +24,7 @@ import {
   closeSession,
 } from "@/server/data/sesja.repository";
 import { createSecurityEvent } from "@/server/data/securityEvent.repository";
+import { logAccessDenied } from "@/server/services/security.service";
 import {
   readSessionToken,
   writeSessionToken,
@@ -232,6 +233,29 @@ export async function requireUser(roles?: Rola[]): Promise<AuthSession> {
   }
   if (roles && !roles.includes(session.rola)) {
     throw new AccessDeniedError();
+  }
+  return session;
+}
+
+/**
+ * Guard a role-restricted panel (presentation layer). Redirects to `/login` when unauthenticated;
+ * when the role is not allowed, logs a `DOSTEP_ODMOWA` event and redirects to `/dashboard` (a denied
+ * panel visit is a soft bounce, not an error page — distinct from {@link requireUser}, which throws).
+ *
+ * @param roles - Allow-list of roles permitted to view the panel.
+ * @returns The authenticated session.
+ */
+export async function requirePanelRole(roles: Rola[]): Promise<AuthSession> {
+  const session = await getSession();
+  if (!session) {
+    redirect("/login");
+  }
+  if (!roles.includes(session.rola)) {
+    await logAccessDenied({
+      userId: session.userId,
+      opis: `Odmowa dostępu do panelu (rola ${session.rola}; wymagane ${roles.join("/")}).`,
+    });
+    redirect("/dashboard");
   }
   return session;
 }

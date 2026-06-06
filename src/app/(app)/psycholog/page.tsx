@@ -1,12 +1,10 @@
-import { redirect } from "next/navigation";
-import { requireUser } from "@/server/services/auth.service";
+import { requirePanelRole } from "@/server/services/auth.service";
 import { Card } from "@/components/Card";
 
 export const dynamic = "force-dynamic";
 
 export default async function PsychologPage() {
-  const session = await requireUser();
-  if (session.rola !== "PSYCHOLOGIST") redirect("/dashboard");
+  await requirePanelRole(["PSYCHOLOGIST"]);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">

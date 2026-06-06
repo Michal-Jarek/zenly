@@ -6,8 +6,10 @@ import {
   logout,
   getSession,
   requireUser,
+  requirePanelRole,
   sha256Hex,
 } from "@/server/services/auth.service";
+import { logAccessDenied } from "@/server/services/security.service";
 import {
   ValidationError,
   CredentialsTakenError,
@@ -50,6 +52,9 @@ vi.mock("@/server/data/sesja.repository", () => ({
 vi.mock("@/server/data/securityEvent.repository", () => ({
   createSecurityEvent: vi.fn(),
 }));
+vi.mock("@/server/services/security.service", () => ({
+  logAccessDenied: vi.fn(),
+}));
 vi.mock("@/lib/session-cookie", () => ({
   readSessionToken: vi.fn(),
   writeSessionToken: vi.fn(),
@@ -74,6 +79,7 @@ const mockedWriteToken = vi.mocked(writeSessionToken);
 const mockedClearToken = vi.mocked(clearSessionToken);
 const mockedHash = vi.mocked(bcrypt.hash);
 const mockedCompare = vi.mocked(bcrypt.compare);
+const mockedLogAccessDenied = vi.mocked(logAccessDenied);
 
 const STRONG_PASSWORD = "StrongPass1!"; // 12 chars, upper+lower+digit+special
 const HOUR = 60 * 60 * 1000;
@@ -331,6 +337,47 @@ describe("requireUser (RBAC gate)", () => {
     await expect(requireUser()).rejects.toMatchObject({
       digest: expect.stringContaining("NEXT_REDIRECT"),
     });
+  });
+});
+
+describe("requirePanelRole (panel guard)", () => {
+  const liveSession = {
+    id: "s1",
+    koniec: null,
+    wygasa: new Date(Date.now() + HOUR),
+    user: { id: "u1", rola: "EMPLOYEE" as const },
+  };
+  const adminSession = {
+    id: "s1",
+    koniec: null,
+    wygasa: new Date(Date.now() + HOUR),
+    user: { id: "a1", rola: "ADMIN" as const },
+  };
+
+  it("returns the session when the role is allowed (no denial logged)", async () => {
+    mockedReadToken.mockResolvedValue("raw");
+    mockedFindSession.mockResolvedValue(adminSession);
+    await expect(requirePanelRole(["ADMIN"])).resolves.toEqual({ userId: "a1", rola: "ADMIN" });
+    expect(mockedLogAccessDenied).not.toHaveBeenCalled();
+  });
+
+  it("logs DOSTEP_ODMOWA and redirects to /dashboard when the role is not allowed", async () => {
+    mockedReadToken.mockResolvedValue("raw");
+    mockedFindSession.mockResolvedValue(liveSession);
+    await expect(requirePanelRole(["ADMIN"])).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
+    expect(mockedLogAccessDenied).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u1" }),
+    );
+  });
+
+  it("redirects to /login when there is no session (no denial logged)", async () => {
+    mockedReadToken.mockResolvedValue(undefined);
+    await expect(requirePanelRole(["ADMIN"])).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
+    expect(mockedLogAccessDenied).not.toHaveBeenCalled();
   });
 });
 

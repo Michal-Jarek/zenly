@@ -1,13 +1,11 @@
-import { redirect } from "next/navigation";
-import { requireUser } from "@/server/services/auth.service";
+import { requirePanelRole } from "@/server/services/auth.service";
 import { getStressReport } from "@/server/services/survey.service";
 import { Card } from "@/components/Card";
 
 export const dynamic = "force-dynamic";
 
 export default async function HrPage() {
-  const session = await requireUser();
-  if (session.rola !== "HR") redirect("/dashboard");
+  await requirePanelRole(["HR"]);
 
   const report = await getStressReport();
 

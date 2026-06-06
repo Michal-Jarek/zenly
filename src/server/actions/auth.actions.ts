@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { assertSameOrigin } from "@/lib/csrf";
 import { register, login, logout } from "@/server/services/auth.service";
+import { getMyResults } from "@/server/services/survey.service";
 
 const RegisterSchema = z.object({
   imie: z.string().min(1),
@@ -55,7 +56,17 @@ export async function loginAction(input: unknown): Promise<ActionResult<void>> {
     const { login: loginValue, haslo, from } = LoginSchema.parse(input);
     // TODO Krok 6: resolve client ip (headers x-forwarded-for) and pass it as login(...,ip) so it
     // lands in SecurityEvent.ip. Until then the `ip?` seam stays null (no reverse-proxy locally).
-    await login(loginValue, haslo);
+    const session = await login(loginValue, haslo);
+    // RB-06: an employee who has never completed a survey is sent straight to the (mandatory) survey
+    // in a single redirect. Going via the dashboard would make the (app) layout re-redirect to
+    // /ankieta during this action-initiated navigation, and that double hop leaves the survey modal
+    // unrendered until a manual refresh. The layout gate stays as defense for direct navigations.
+    if (session.rola === "EMPLOYEE") {
+      const results = await getMyResults(session.userId);
+      if (results.length === 0) {
+        redirect("/ankieta");
+      }
+    }
     redirect(safeRedirectTarget(from));
   });
 }
