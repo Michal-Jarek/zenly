@@ -1,3 +1,4 @@
+import { cache } from "react";
 import {
   validateSurveyAnswers,
   sumAnswers,
@@ -12,14 +13,26 @@ import {
   NotFoundError,
 } from "@/server/domain/errors";
 import type { PoziomStresu, TypModulu } from "@/server/domain/types";
-import { getAnkietaWithPytania } from "@/server/data/ankieta.repository";
+import {
+  getAnkietaWithPytania,
+  getActiveAnkietaWithPytania,
+} from "@/server/data/ankieta.repository";
 import {
   createWynikWithOdpowiedzi,
   getResultsByUser,
   getResultById,
   getLatestResultByUser,
+  getAllResults,
 } from "@/server/data/wynik.repository";
 import { findUserById } from "@/server/data/user.repository";
+import { anonymizeStressReport } from "@/server/domain/anonymize";
+
+/** The active survey to render (id needed for submit; questions carry their text). */
+export type ActiveSurvey = {
+  id: string;
+  tytul: string;
+  pytania: { id: string; tresc: string; kolejnosc: number }[];
+};
 
 /**
  * Submit a completed stress survey: validate, score, persist the result with its answers,
@@ -87,9 +100,9 @@ export async function submitSurvey(
  * @param userId - The authenticated user whose results to list.
  * @returns The user's survey results, newest first.
  */
-export function getMyResults(userId: string) {
-  return getResultsByUser(userId);
-}
+// Request-memoized (React cache): the (app) layout's RB-06 gate and the dashboard page both read
+// this in the same request — cache() collapses them to a single query.
+export const getMyResults = cache((userId: string) => getResultsByUser(userId));
 
 /**
  * Fetch a single survey result, enforcing owner-only access (RB-29).
@@ -123,4 +136,28 @@ export async function getResult(userId: string, wynikId: string) {
 export async function isSurveyDue(userId: string, now: Date): Promise<boolean> {
   const latest = await getLatestResultByUser(userId);
   return isSurveyRequired(latest?.dataWypelnienia ?? null, now);
+}
+
+/**
+ * Fetch the active survey (id + questions with text) to render the survey form.
+ *
+ * @returns The active survey, or `null` when none is active.
+ */
+export function getActiveSurvey(): Promise<ActiveSurvey | null> {
+  return getActiveAnkietaWithPytania();
+}
+
+/**
+ * Anonymized stress-level aggregate across all results, for HR (RB-30). No PII.
+ *
+ * @returns Counts per stress level and the total.
+ */
+export async function getStressReport(): Promise<{
+  low: number;
+  medium: number;
+  high: number;
+  total: number;
+}> {
+  const results = await getAllResults();
+  return anonymizeStressReport(results);
 }

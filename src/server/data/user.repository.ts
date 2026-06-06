@@ -21,6 +21,18 @@ export function findUserById(
   });
 }
 
+/** Display profile of a user (name + role) for the presentation layer. Never returns the hash. */
+export function findUserProfileById(id: string): Promise<{
+  imie: string;
+  nazwisko: string;
+  rola: $Enums.Rola;
+} | null> {
+  return prisma.user.findUnique({
+    where: { id },
+    select: { imie: true, nazwisko: true, rola: true },
+  });
+}
+
 /** Resolve a user id by their unique login (registration uniqueness pre-check). */
 export function findUserByLogin(
   login: string,

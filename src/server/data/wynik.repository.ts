@@ -33,6 +33,11 @@ export function getResultById(id: string): Promise<WynikAnkiety | null> {
   return prisma.wynikAnkiety.findUnique({ where: { id } });
 }
 
+/** Stress levels of every survey result (HR anonymized aggregate — no PII). */
+export function getAllResults(): Promise<{ poziomStresu: $Enums.PoziomStresu }[]> {
+  return prisma.wynikAnkiety.findMany({ select: { poziomStresu: true } });
+}
+
 /** Date of a user's most recent survey, or `null` when they have none. */
 export function getLatestResultByUser(
   userId: string,

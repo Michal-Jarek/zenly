@@ -17,7 +17,14 @@ const RegisterSchema = z.object({
 const LoginSchema = z.object({
   login: z.string().min(1),
   haslo: z.string().min(1),
+  from: z.string().optional(),
 });
+
+/** Allow only same-site relative paths as a post-login target (open-redirect guard). */
+function safeRedirectTarget(from?: string): string {
+  if (from && from.startsWith("/") && !from.startsWith("//")) return from;
+  return "/dashboard";
+}
 
 /**
  * Register a new account, then redirect to the login page. Thin transport: same-origin guard,
@@ -45,11 +52,11 @@ export async function registerAction(input: unknown): Promise<ActionResult<void>
 export async function loginAction(input: unknown): Promise<ActionResult<void>> {
   return runAction(async () => {
     await assertSameOrigin();
-    const { login: loginValue, haslo } = LoginSchema.parse(input);
+    const { login: loginValue, haslo, from } = LoginSchema.parse(input);
     // TODO Krok 6: resolve client ip (headers x-forwarded-for) and pass it as login(...,ip) so it
     // lands in SecurityEvent.ip. Until then the `ip?` seam stays null (no reverse-proxy locally).
     await login(loginValue, haslo);
-    redirect("/dashboard");
+    redirect(safeRedirectTarget(from));
   });
 }
 
